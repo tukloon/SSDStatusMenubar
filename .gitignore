@@ -1,0 +1,28 @@
+# Xcode
+.DS_Store
+*.xcodeproj/*.pbxuser
+*.xcodeproj/*.xcworkspace/xcuserdata/
+*.xcodeproj/*.xcworkspace/xcshareddata/swiftpm/Package.resolved
+*.xcworkspace/xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+
+# Build products
+build/
+*.build/
+DerivedData/
+
+# Swift Package Manager
+.swiftpm/
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/Build/
+
+# Other
+*.bak
+*.swp
+*~
+.localized

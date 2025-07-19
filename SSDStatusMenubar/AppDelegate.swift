@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Combine
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     
@@ -11,16 +12,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     var statusItem: NSStatusItem?
     var hostingView: NSHostingView<SSDUsageView>?
     var diskSpaceMonitor = DiskSpaceMonitor()
-    var totalCapacityMenuItem: NSMenuItem? // 総容量表示用のメニュー項目
-    var usedCapacityMenuItem: NSMenuItem? // 使用容量表示用のメニュー項目
+    private var totalCapacityMenuItem: NSMenuItem? // 総容量表示用のメニュー項目
+    private var usedCapacityMenuItem: NSMenuItem? // 使用容量表示用のメニュー項目
 
-    private let byteCountFormatter: ByteCountFormatter = {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter
-    }()
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
+        setupStatusBarView()
+
+        setupStatusBarMenu() // メニュー設定を呼び出し
+
+        // Observe disk space changes
+        setupObservers()
+    }
+
+    private func setupStatusBarView() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         // 初期ビューを設定
@@ -36,37 +41,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             button.addSubview(hostingView!)
             button.frame = hostingView!.frame // ボタンのフレームをビューに合わせる
         }
-
-        setupStatusBarMenu() // メニュー設定を呼び出し
-
-        // DiskSpaceMonitorからの更新を購読
-        diskSpaceMonitor.$availableCapacity
-            .combineLatest(diskSpaceMonitor.$totalCapacity, diskSpaceMonitor.$isErrorState)
-            .sink { [weak self] available, total, isError in
-                guard let self = self else { return }
-                let newView = SSDUsageView(availableCapacity: available, totalCapacity: total, isErrorState: isError)
-                self.hostingView?.rootView = newView
-                
-                if let newSize = self.hostingView?.fittingSize {
-                    self.hostingView?.frame = NSRect(x: 0, y: 0, width: newSize.width, height: NSStatusBar.system.thickness)
-                    self.statusItem?.button?.frame = self.hostingView!.frame
-                }
-
-                let formatter = self.byteCountFormatter
-
-                if isError {
-                    self.totalCapacityMenuItem?.attributedTitle = self.createAttributedTitle(text: "Total: Error")
-                    self.usedCapacityMenuItem?.attributedTitle = self.createAttributedTitle(text: "Used: Error")
-                } else {
-                    let formattedTotalCapacity = formatter.string(fromByteCount: total)
-                    self.totalCapacityMenuItem?.attributedTitle = self.createAttributedTitle(text: "Total: \(formattedTotalCapacity)")
-
-                    let usedCapacity = total - available
-                    let formattedUsedCapacity = formatter.string(fromByteCount: usedCapacity)
-                    self.usedCapacityMenuItem?.attributedTitle = self.createAttributedTitle(text: "Used: \(formattedUsedCapacity)")
-                }
-            }
-            .store(in: &cancellables)
     }
 
     private var cancellables = Set<AnyCancellable>()
@@ -76,20 +50,70 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         return NSAttributedString(string: text, attributes: [.foregroundColor: NSColor.labelColor, .font: font])
     }
 
+    private func createMenuItem(withText text: String, action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: "", action: action, keyEquivalent: "")
+        item.target = self
+        item.attributedTitle = createAttributedTitle(text: text)
+        return item
+    }
+
     private func setupStatusBarMenu() {
         let menu = NSMenu()
 
-        totalCapacityMenuItem = NSMenuItem(title: "", action: #selector(dismissMenu(_:)), keyEquivalent: "")
-        totalCapacityMenuItem?.attributedTitle = createAttributedTitle(text: "Total: Calculating...")
+        totalCapacityMenuItem = createMenuItem(withText: "Total: Calculating...", action: #selector(dismissMenu(_:)))
         menu.addItem(totalCapacityMenuItem!)
 
-        usedCapacityMenuItem = NSMenuItem(title: "", action: #selector(dismissMenu(_:)), keyEquivalent: "")
-        usedCapacityMenuItem?.attributedTitle = createAttributedTitle(text: "Used: Calculating...")
+        usedCapacityMenuItem = createMenuItem(withText: "Used: Calculating...", action: #selector(dismissMenu(_:)))
         menu.addItem(usedCapacityMenuItem!)
 
         menu.addItem(NSMenuItem.separator()) // 区切り線を追加
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: AppDelegate.quitKeyEquivalent))
         statusItem?.menu = menu
+    }
+
+    /// Subscribe to diskSpaceMonitor updates and refresh view
+    private func setupObservers() {
+        diskSpaceMonitor.$availableCapacity
+            .combineLatest(diskSpaceMonitor.$totalCapacity, diskSpaceMonitor.$isErrorState)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] available, total, isError in
+                self?.updateView(available: available, total: total, isError: isError)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func updateView(available: Int64, total: Int64, isError: Bool) {
+        let newView = SSDUsageView(availableCapacity: available, totalCapacity: total, isErrorState: isError)
+        hostingView?.rootView = newView
+
+        // Update frame based on new content
+        adjustHostingViewFrame()
+
+        // Update menu item titles
+        let used = total - available
+        updateMenuItems(total: total, used: used, isError: isError)
+    }
+
+    /// Update menu titles based on capacity values
+    private func updateMenuItems(total: Int64, used: Int64, isError: Bool) {
+        if isError {
+            totalCapacityMenuItem?.attributedTitle = createAttributedTitle(text: "Total: Error")
+            usedCapacityMenuItem?.attributedTitle = createAttributedTitle(text: "Used: Error")
+        } else {
+            let formattedTotal = DiskSpaceFormatter.menuDisplay.string(fromByteCount: total)
+            totalCapacityMenuItem?.attributedTitle = createAttributedTitle(text: "Total: \(formattedTotal)")
+            let formattedUsed = DiskSpaceFormatter.menuDisplay.string(fromByteCount: used)
+            usedCapacityMenuItem?.attributedTitle = createAttributedTitle(text: "Used: \(formattedUsed)")
+        }
+    }
+
+    /// Update hostingView and statusItem button frames based on content size
+    private func adjustHostingViewFrame() {
+        guard let hostingView = hostingView,
+              let button = statusItem?.button else { return }
+        let newSize = hostingView.fittingSize
+        hostingView.frame = NSRect(x: 0, y: 0, width: newSize.width, height: NSStatusBar.system.thickness)
+        button.frame = hostingView.frame
     }
 
     @objc private func dismissMenu(_ sender: NSMenuItem) {

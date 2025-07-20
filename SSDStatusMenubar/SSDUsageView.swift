@@ -2,79 +2,60 @@ import SwiftUI
 
 /// A view that displays available disk space as a bar meter and text.
 struct SSDUsageView: View {
-    static let hStackSpacing: CGFloat = 4
-    static let mainFontSize: CGFloat = 12
-    static let unitFontSize: CGFloat = 6
-    static let underlineHeight: CGFloat = 7
-    static let underlineOffsetY: CGFloat = 6.5
-    static let barWidth: CGFloat = 30
-    static let barHeight: CGFloat = 20
-    static let horizontalPadding: CGFloat = 5
-    static let innerPadding: CGFloat = 2
-    static let cornerRadius: CGFloat = 2
-    static let minimumScale: CGFloat = 0.5
-
-    var availableCapacity: Int64
-    var totalCapacity: Int64
-    var isErrorState: Bool
-
-    private var freeSpacePercentage: Double {
-        guard totalCapacity > 0 else { return 0.0 }
-        return Double(availableCapacity) / Double(totalCapacity)
-    }
-
-    private var formattedCapacityInMeter: String {
-        return DiskSpaceFormatter.statusBarDisplay.string(fromByteCount: availableCapacity)
-    }
+    @ObservedObject var diskSpaceMonitor: DiskSpaceMonitor
 
     var body: some View {
-        HStack(spacing: Self.hStackSpacing) {
-            if isErrorState {
+        HStack(spacing: Constants.View.hStackSpacing) {
+            if diskSpaceMonitor.isErrorState {
                 Text("Error")
-                    .font(.system(size: Self.mainFontSize))
+                    .font(.system(size: Constants.View.mainFontSize))
                     .foregroundColor(.red)
-                    .padding(.horizontal, Self.innerPadding)
+                    .padding(.horizontal, Constants.View.innerPadding)
             } else {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
                         // Filled bar
-                        RoundedRectangle(cornerRadius: Self.cornerRadius)
+                        RoundedRectangle(cornerRadius: Constants.View.cornerRadius)
                             .fill(Color.accentColor)
-                            .frame(width: geometry.size.width * CGFloat(freeSpacePercentage))
+                            .frame(width: geometry.size.width * CGFloat(diskSpaceMonitor.freeSpaceFraction))
                         // Underline
                         Rectangle()
                             .fill(Color.secondary)
-                            .frame(height: Self.underlineHeight)
-                            .offset(y: Self.underlineOffsetY)
+                            .frame(height: Constants.View.underlineHeight)
+                            .offset(y: Constants.View.underlineOffsetY)
                         // Text overlay
                         VStack(alignment: .trailing) {
-                            Text(formattedCapacityInMeter)
-                                .font(.system(size: Self.mainFontSize))
+                            Text(diskSpaceMonitor.formattedAvailableCapacity)
+                                .font(.system(size: Constants.View.mainFontSize))
                                 .foregroundColor(.primary)
                                 .lineLimit(1)
-                                .minimumScaleFactor(Self.minimumScale)
+                                .minimumScaleFactor(Constants.View.minimumScale)
                             Text("GB")
-                                .font(.system(size: Self.unitFontSize))
+                                .font(.system(size: Constants.View.unitFontSize))
                                 .foregroundColor(.primary)
                         }
                         .frame(width: geometry.size.width, alignment: .trailing)
-                        .padding(.horizontal, Self.innerPadding)
+                        .padding(.horizontal, Constants.View.innerPadding)
                     }
                 }
             }
         }
-        .frame(width: Self.barWidth, height: Self.barHeight)
-        .padding(.horizontal, Self.horizontalPadding)
+        .frame(width: Constants.View.barWidth, height: Constants.View.barHeight)
+        .padding(.horizontal, Constants.View.horizontalPadding)
     }
 }
 
 struct SSDUsageView_Previews: PreviewProvider {
+    @MainActor
     static var previews: some View {
-        SSDUsageView(
-            availableCapacity: 140_000_000_000,
-            totalCapacity: 250_000_000_000,
-            isErrorState: false
+        let mockProvider = MockDiskSpaceProvider(
+            available: 140_000_000_000,
+            total: 250_000_000_000,
+            shouldFail: false
         )
-        .previewLayout(.fixed(width: 50, height: 20))
+        let monitor = DiskSpaceMonitor(provider: mockProvider)
+        
+        SSDUsageView(diskSpaceMonitor: monitor)
+            .previewLayout(.fixed(width: 50, height: 20))
     }
 }

@@ -22,7 +22,13 @@ struct DiskSpaceFormatter {
 }
 
 extension Int64 {
-    func formattedBytes() -> String {
+    /// Format byte count for menu display (with units).
+    func formattedForMenu() -> String {
         return DiskSpaceFormatter.menuDisplay.string(fromByteCount: self)
+    }
+    
+    /// Format byte count for status bar display (without units).
+    func formattedForStatusBar() -> String {
+        return DiskSpaceFormatter.statusBarDisplay.string(fromByteCount: self)
     }
 }

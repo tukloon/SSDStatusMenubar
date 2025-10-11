@@ -8,7 +8,7 @@ enum Constants {
     }
     
     enum StatusBar {
-        static let updateInterval: TimeInterval = 10.0
+        static let updateInterval: TimeInterval = 5.0
     }
     
     enum View {

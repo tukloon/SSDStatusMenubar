@@ -51,7 +51,7 @@ class DiskSpaceMonitor: ObservableObject {
         }
     }
     
-    private func updateDiskSpace() async {
+    func updateDiskSpace() async {
         do {
             let (available, total) = try await diskSpaceProvider.getDiskSpace()
             

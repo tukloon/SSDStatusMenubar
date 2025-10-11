@@ -1,18 +1,21 @@
 import AppKit
 
 @MainActor
-class StatusMenuManager {
+class StatusMenuManager: NSObject {
     private weak var statusItem: NSStatusItem?
     private var totalCapacityMenuItem: NSMenuItem?
     private var usedCapacityMenuItem: NSMenuItem?
+    private var updateCallback: (() -> Void)?
     
     init(statusItem: NSStatusItem) {
         self.statusItem = statusItem
+        super.init()
         setupMenu()
     }
     
     private func setupMenu() {
         let menu = NSMenu()
+        menu.delegate = self
         
         // Total capacity menu item
         totalCapacityMenuItem = createMenuItem(withText: "Total: Calculating...", action: #selector(dismissMenu(_:)))
@@ -32,6 +35,10 @@ class StatusMenuManager {
         menu.addItem(quitItem)
         
         statusItem?.menu = menu
+    }
+    
+    func setUpdateCallback(_ callback: @escaping () -> Void) {
+        self.updateCallback = callback
     }
     
     private func createMenuItem(withText text: String, action: Selector) -> NSMenuItem {
@@ -64,5 +71,12 @@ class StatusMenuManager {
     
     @objc private func dismissMenu(_ sender: NSMenuItem) {
         statusItem?.menu?.cancelTracking()
+    }
+}
+
+extension StatusMenuManager: NSMenuDelegate {
+    func menuWillOpen(_ menu: NSMenu) {
+        // メニューが開かれる直前に最新の値を取得
+        updateCallback?()
     }
 }

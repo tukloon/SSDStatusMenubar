@@ -27,6 +27,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Setup menu
         if let statusItem = statusItem {
             menuManager = StatusMenuManager(statusItem: statusItem)
+            menuManager?.setUpdateCallback { [weak self] in
+                Task { @MainActor in
+                    await self?.diskSpaceMonitor.updateDiskSpace()
+                }
+            }
         }
     }
     
